@@ -1,0 +1,69 @@
+generator client {
+  provider = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String
+  password  String?  // Optional initially for migration, but logic should enforcing it for 'digital'
+  role      String   // 'digital' | 'operador'
+  wallet    String?
+  createdAt DateTime @default(now())
+  
+  lines     Line[]
+}
+
+model Line {
+  id            String   @id @default(uuid())
+  instanceName  String   @unique // Name in Evolution API
+  instanceId    String?  // ID in Evolution API
+  phoneNumber   String?
+  status        String   // CONNECTED, DISCONNECTED
+  
+  operatorId    String?
+  operator      User?    @relation(fields: [operatorId], references: [id])
+  
+  conversations Conversation[]
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Conversation {
+  id          String    @id @default(uuid())
+  remoteJid   String    // WhatsApp ID of the contact
+  lineId      String
+  line        Line      @relation(fields: [lineId], references: [id])
+  
+  contactName String?
+  contactPic  String?
+  
+  messages    Message[]
+  
+  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime  @default(now())
+  
+  @@unique([lineId, remoteJid])
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  evolutionId    String       @unique // ID from Evolution API
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  
+  content        String
+  type           String       // text, image, audio, etc.
+  direction      String       // SENT, RECEIVED
+  status         String       // SENT, DELIVERED, READ
+  
+  timestamp      DateTime
+  createdAt      DateTime     @default(now())
+}
