@@ -59,4 +59,10 @@ export const authApi = {
     login: (data: any) => api.post('/auth/login', data).then(res => res.data),
 };
 
+export const reportsApi = {
+    getMessagesByLine: () => api.get('/reports/messages-by-line').then(res => res.data),
+    getMessagesByOperator: () => api.get('/reports/messages-by-operator').then(res => res.data),
+    getLinesStatus: () => api.get('/reports/lines-status').then(res => res.data),
+};
+
 export default api;

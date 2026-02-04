@@ -11,6 +11,7 @@ import OperatorPanel from "./pages/OperatorPanel";
 import DigitalDashboard from "./pages/DigitalDashboard";
 import Conversations from "./pages/Conversations";
 import Management from "./pages/Management";
+import Reports from "./pages/Reports";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -68,48 +69,57 @@ function AppRoutes() {
   return (
     <Routes>
       {/* Public route */}
-      <Route 
-        path="/login" 
-        element={user ? <Navigate to="/" replace /> : <Login />} 
+      <Route
+        path="/login"
+        element={user ? <Navigate to="/" replace /> : <Login />}
       />
 
       {/* Role-based redirect */}
       <Route path="/" element={<RoleBasedRedirect />} />
 
       {/* Operator routes */}
-      <Route 
-        path="/operator" 
+      <Route
+        path="/operator"
         element={
           <ProtectedRoute allowedRoles={['operador']}>
             <OperatorPanel />
           </ProtectedRoute>
-        } 
+        }
       />
 
       {/* Digital (Admin) routes */}
-      <Route 
-        path="/dashboard" 
+      <Route
+        path="/dashboard"
         element={
           <ProtectedRoute allowedRoles={['digital']}>
             <DigitalDashboard />
           </ProtectedRoute>
-        } 
+        }
       />
-      <Route 
-        path="/conversations/:lineId" 
+      <Route
+        path="/conversations/:lineId"
         element={
           <ProtectedRoute allowedRoles={['digital']}>
             <Conversations />
           </ProtectedRoute>
-        } 
+        }
       />
-      <Route 
-        path="/management" 
+      <Route
+        path="/management"
         element={
           <ProtectedRoute allowedRoles={['digital']}>
             <Management />
           </ProtectedRoute>
-        } 
+        }
+      />
+
+      <Route
+        path="/reports"
+        element={
+          <ProtectedRoute allowedRoles={['digital']}>
+            <Reports />
+          </ProtectedRoute>
+        }
       />
 
       {/* Catch-all */}

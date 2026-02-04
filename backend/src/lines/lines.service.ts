@@ -148,6 +148,11 @@ export class LinesService {
                                     phoneNumber: phoneNumber
                                 }
                             });
+
+                            // Trigger History Sync
+                            this.syncHistory(instanceName).catch(err =>
+                                this.logger.error(`Background history sync failed (getQrCode) for ${instanceName}: ${err.message}`)
+                            );
                         }
                     } catch (infoError) {
                         this.logger.warn(`Failed to fetch instance info for ${instanceName}: ${infoError.message}`);
@@ -211,6 +216,12 @@ export class LinesService {
                             phoneNumber: phoneNumber
                         }
                     });
+
+                    // Trigger History Sync
+                    this.syncHistory(instanceName).catch(err =>
+                        this.logger.error(`Background history sync failed for ${instanceName}: ${err.message}`)
+                    );
+
                     return { status: 'connected', phoneNumber };
                 }
             }
@@ -218,6 +229,110 @@ export class LinesService {
         } catch (error) {
             this.logger.error(`Sync failed for ${instanceName}: ${error.message}`);
             throw error;
+        }
+    }
+
+    async syncHistory(instanceName: string) {
+        this.logger.log(`Starting history sync for ${instanceName}...`);
+        const baseUrl = this.evolutionUrl.replace(/\/$/, '');
+
+        try {
+            // 1. Get Line ID
+            const line = await this.prisma.line.findUnique({ where: { instanceName } });
+            if (!line) {
+                this.logger.warn(`Cannot sync history: Line ${instanceName} not found in DB`);
+                return;
+            }
+
+            // 2. Fetch Chats
+            const chatsUrl = `${baseUrl}/chat/findChats/${instanceName}`;
+            const chatsRes = await axios.get(chatsUrl, { headers: { apikey: this.evolutionKey } });
+            const chats = chatsRes.data || [];
+
+            this.logger.log(`Found ${chats.length} chats for ${instanceName}. Processing...`);
+
+            // 3. Process each chat
+            for (const chat of chats) {
+                const remoteJid = chat.id || chat.jid;
+                if (!remoteJid) continue;
+
+                // Upsert Conversation
+                const conversation = await this.prisma.conversation.upsert({
+                    where: {
+                        lineId_remoteJid: {
+                            lineId: line.id,
+                            remoteJid
+                        }
+                    },
+                    update: {
+                        contactName: chat.name || chat.pushName,
+                        updatedAt: new Date(chat.conversationTimestamp * 1000 || Date.now())
+                    },
+                    create: {
+                        lineId: line.id,
+                        remoteJid,
+                        contactName: chat.name || chat.pushName,
+                        updatedAt: new Date(chat.conversationTimestamp * 1000 || Date.now())
+                    }
+                });
+
+                // 4. Fetch Messages for this Chat
+                try {
+                    const msgsUrl = `${baseUrl}/chat/findMessages/${instanceName}`;
+                    const msgsRes = await axios.post(msgsUrl, {
+                        where: {
+                            key: { remoteJid }
+                        },
+                        options: {
+                            limit: 20, // Sync last 20 messages
+                            order: [['messageTimestamp', 'DESC']]
+                        }
+                    }, { headers: { apikey: this.evolutionKey } });
+
+                    const messages = msgsRes.data || [];
+
+                    // Process messages (reverse to insert in order if needed, but we check dupes anyway)
+                    for (const msg of messages) {
+                        const msgData = msg.message || {};
+                        const key = msg.key || {};
+                        const id = key.id;
+                        if (!id) continue;
+
+                        // Content extraction (reuse logic if possible, simplified here)
+                        const content =
+                            msgData.conversation ||
+                            msgData.extendedTextMessage?.text ||
+                            msgData.imageMessage?.caption ||
+                            (msg.messageType === 'imageMessage' ? '📷 Imagem' :
+                                msg.messageType === 'audioMessage' ? '🎤 Áudio' : 'Media/Outros');
+
+                        // Upsert Message
+                        const existing = await this.prisma.message.findUnique({ where: { evolutionId: id } });
+                        if (!existing) {
+                            await this.prisma.message.create({
+                                data: {
+                                    evolutionId: id,
+                                    conversationId: conversation.id,
+                                    content: content || '...',
+                                    type: msg.messageType || 'text',
+                                    direction: key.fromMe ? 'SENT' : 'RECEIVED',
+                                    status: msg.status || 'DELIVERED',
+                                    timestamp: new Date((msg.messageTimestamp || Date.now() / 1000) * 1000)
+                                }
+                            });
+                        }
+                    }
+
+                } catch (msgErr) {
+                    this.logger.warn(`Failed to fetch messages for ${remoteJid}: ${msgErr.message}`);
+                }
+            }
+
+            this.logger.log(`History sync completed for ${instanceName}`);
+
+        } catch (error) {
+            this.logger.error(`History sync error for ${instanceName}: ${error.message}`);
+            // Don't throw, just log
         }
     }
 

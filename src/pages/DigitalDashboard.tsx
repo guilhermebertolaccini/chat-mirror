@@ -18,6 +18,7 @@ import {
   Settings,
   ChevronRight,
   Phone,
+  FileSpreadsheet,
 } from 'lucide-react';
 import {
   Select,
@@ -133,6 +134,9 @@ export default function DigitalDashboard() {
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="icon" onClick={() => navigate('/management')}>
               <Settings className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon" onClick={() => navigate('/reports')}>
+              <FileSpreadsheet className="h-4 w-4" />
             </Button>
             <span className="text-sm text-muted-foreground hidden sm:block">{user?.name}</span>
             <Button variant="ghost" size="icon" onClick={logout}>
