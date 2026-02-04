@@ -334,6 +334,31 @@ export class LinesService {
             this.logger.error(`History sync error for ${instanceName}: ${error.message}`);
             // Don't throw, just log
         }
+        // Don't throw, just log
+    }
+    async syncAllLines() {
+        this.logger.log('Starting global sync for all lines...');
+        const lines = await this.prisma.line.findMany();
+        const results = {
+            total: lines.length,
+            success: 0,
+            failed: 0,
+            details: [] as any[]
+        };
+
+        for (const line of lines) {
+            try {
+                await this.syncInstance(line.instanceName);
+                results.success++;
+                results.details.push({ instance: line.instanceName, status: 'success' });
+            } catch (error) {
+                results.failed++;
+                results.details.push({ instance: line.instanceName, status: 'error', error: error.message });
+            }
+        }
+
+        this.logger.log(`Global sync finished. Success: ${results.success}, Failed: ${results.failed}`);
+        return results;
     }
 
     private async configureWebhook(instanceName: string) {

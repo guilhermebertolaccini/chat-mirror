@@ -45,6 +45,10 @@ export const linesApi = {
     sync: async (lineId: string) => {
         const response = await api.post(`/lines/${lineId}/sync`);
         return response.data;
+    },
+    syncAll: async () => {
+        const response = await api.post('/lines/sync-all');
+        return response.data;
     }
 };
 

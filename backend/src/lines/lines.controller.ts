@@ -45,4 +45,8 @@ export class LinesController {
 
         return this.linesService.syncInstance(line.instanceName);
     }
+    @Post('sync-all')
+    async syncAll() {
+        return this.linesService.syncAllLines();
+    }
 }

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { reportsApi } from '@/lib/api';
+import { reportsApi, linesApi } from '@/lib/api';
+import { RefreshCw } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -15,25 +16,39 @@ export default function Reports() {
     const [linesStatus, setLinesStatus] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
+    const fetchData = async () => {
+        setLoading(true); // set loading true on manual refresh too
+        try {
+            const [byLine, byOp, status] = await Promise.all([
+                reportsApi.getMessagesByLine(),
+                reportsApi.getMessagesByOperator(),
+                reportsApi.getLinesStatus(),
+            ]);
+            setMessagesByLine(byLine);
+            setMessagesByOperator(byOp);
+            setLinesStatus(status);
+        } catch (error) {
+            console.error('Failed to fetch reports:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     useEffect(() => {
-        const fetchData = async () => {
-            try {
-                const [byLine, byOp, status] = await Promise.all([
-                    reportsApi.getMessagesByLine(),
-                    reportsApi.getMessagesByOperator(),
-                    reportsApi.getLinesStatus(),
-                ]);
-                setMessagesByLine(byLine);
-                setMessagesByOperator(byOp);
-                setLinesStatus(status);
-            } catch (error) {
-                console.error('Failed to fetch reports:', error);
-            } finally {
-                setLoading(false);
-            }
-        };
         fetchData();
     }, []);
+
+    const handleSync = async () => {
+        try {
+            setLoading(true);
+            await linesApi.syncAll();
+            await fetchData();
+        } catch (error) {
+            console.error("Sync failed", error);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const downloadCSV = (data: any[], filename: string) => {
         if (!data.length) return;
@@ -77,6 +92,10 @@ export default function Reports() {
                             <p className="text-muted-foreground">Estatísticas detalhadas e exportação</p>
                         </div>
                     </div>
+                    <Button variant="outline" onClick={handleSync} disabled={loading}>
+                        <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                        Sincronizar Dados
+                    </Button>
                 </div>
 
                 {/* Content */}
