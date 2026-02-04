@@ -26,7 +26,7 @@ api.interceptors.response.use(
 );
 
 export const dashboardApi = {
-    getMetrics: () => api.get('/dashboard/metrics').then(res => res.data),
+    getMetrics: (params?: { search?: string; date?: string }) => api.get('/dashboard/metrics', { params }).then(res => res.data),
     getOperators: () => api.get('/dashboard/operators').then(res => res.data),
 };
 

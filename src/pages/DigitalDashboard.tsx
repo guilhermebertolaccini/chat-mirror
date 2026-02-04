@@ -35,6 +35,7 @@ export default function DigitalDashboard() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline'>('all');
   const [walletFilter, setWalletFilter] = useState<string>('all');
+  const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]); // Default today YYYY-MM-DD
 
   // Real Data State
   const [metrics, setMetrics] = useState({
@@ -53,7 +54,7 @@ export default function DigitalDashboard() {
     const fetchData = async () => {
       try {
         const [metricsData, operatorsData] = await Promise.all([
-          dashboardApi.getMetrics(),
+          dashboardApi.getMetrics({ search: searchTerm, date }),
           dashboardApi.getOperators(),
         ]);
         setMetrics(metricsData);
@@ -65,11 +66,19 @@ export default function DigitalDashboard() {
       }
     };
 
-    fetchData();
-    // Polling every 5 seconds for real-time updates
-    const interval = setInterval(fetchData, 5000);
-    return () => clearInterval(interval);
-  }, []);
+    // Debounce checks
+    const timeoutId = setTimeout(() => {
+      fetchData();
+    }, 500); // 500ms debounce for typing
+
+    // Polling every 10 seconds for real-time updates (less aggressive now)
+    const interval = setInterval(fetchData, 10000);
+
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeoutId);
+    };
+  }, [searchTerm, date]); // Re-fetch when search or date changes
 
   // Get unique wallets
   // operators might be empty initially, so safe check
@@ -257,14 +266,24 @@ export default function DigitalDashboard() {
                 </div>
               </div>
 
-              <div className="relative mt-4">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar operador..."
-                  className="pl-9"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
+              <div className="relative mt-4 flex gap-4">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar operador (filtra métricas e lista)..."
+                    className="pl-9"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </div>
+                <div className="w-[180px]">
+                  <Input
+                    type="date"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    className="w-full"
+                  />
+                </div>
               </div>
             </CardHeader>
             <CardContent>
