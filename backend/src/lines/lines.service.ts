@@ -339,12 +339,20 @@ export class LinesService {
 
                     // Process messages
                     for (const msg of messages) {
+                        // Log first message to debug structure
+                        if (messages.indexOf(msg) === 0) {
+                            this.logger.log(`Debugging message structure (first of ${messages.length}):Keys: ${Object.keys(msg).join(',')}, ID: ${msg.key?.id}, Timestamp: ${msg.messageTimestamp}`);
+                        }
+
                         const msgData = msg.message || {};
                         const key = msg.key || {};
                         const id = key.id;
-                        const msgTimestamp = msg.messageTimestamp || 0;
+                        const msgTimestamp = msg.messageTimestamp || 0; // consistent variable name
 
-                        if (!id) continue;
+                        if (!id) {
+                            this.logger.warn(`Skipping message without ID: ${JSON.stringify(msg).slice(0, 200)}`);
+                            continue;
+                        }
 
                         // Skip messages older than threshold
                         if (msgTimestamp < timestampThreshold) {
@@ -359,6 +367,11 @@ export class LinesService {
                             msgData.imageMessage?.caption ||
                             (msg.messageType === 'imageMessage' ? '📷 Imagem' :
                                 msg.messageType === 'audioMessage' ? '🎤 Áudio' : 'Media/Outros');
+
+                        // Debug extraction if content is empty/weird
+                        if (!content && messages.indexOf(msg) < 3) {
+                            this.logger.warn(`Empty content for msg ${id}: type=${msg.messageType}, keys=${Object.keys(msgData).join(',')}`);
+                        }
 
                         // Check if already exists
                         const existing = await this.prisma.message.findUnique({ where: { evolutionId: id } });
@@ -379,7 +392,10 @@ export class LinesService {
                     }
 
                     if (imported > 0 || skipped > 0) {
-                        this.logger.log(`Chat ${remoteJid}: imported ${imported}, skipped ${skipped} old messages`);
+                        this.logger.log(`Chat ${remoteJid}: imported ${imported}, skipped ${skipped} old messages (Threshold: ${new Date(timestampThreshold * 1000).toISOString()})`);
+                    } else {
+                        // Log why 0 imported
+                        this.logger.log(`Chat ${remoteJid}: 0 imported, 0 skipped. Total messages found: ${messages.length}. Check timestamp threshold?`);
                     }
 
                     // Rate limiting: 2s between chats
