@@ -252,6 +252,8 @@ export class LinesService {
 
             // 2. Fetch Chats
             const chatsUrl = `${baseUrl}/chat/findChats/${instanceName}`;
+            this.logger.log(`Fetching chats from: ${chatsUrl}`);
+
             const chatsRes = await axios.get(chatsUrl, { headers: { apikey: this.evolutionKey } });
             const chats = chatsRes.data || [];
 
@@ -375,7 +377,10 @@ export class LinesService {
             this.logger.log(`History sync completed for ${instanceName}`);
 
         } catch (error) {
-            this.logger.error(`History sync error for ${instanceName}: ${error.message}`);
+            const errorDetails = error.response
+                ? `URL: ${error.config?.url} - Status: ${error.response.status} - Data: ${JSON.stringify(error.response.data)}`
+                : error.message;
+            this.logger.error(`History sync error for ${instanceName}: ${errorDetails}`);
             // Don't throw, just log
         }
         // Don't throw, just log
