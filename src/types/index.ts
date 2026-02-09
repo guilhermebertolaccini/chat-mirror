@@ -38,9 +38,9 @@ export interface Message {
   conversationId: string;
   content: string;
   type: 'text' | 'image' | 'audio' | 'document';
-  direction: 'sent' | 'received';
+  direction: 'SENT' | 'RECEIVED';
   timestamp: string;
-  status: 'sent' | 'delivered' | 'read';
+  status: 'SENT' | 'DELIVERED' | 'READ';
 }
 
 // Conversation

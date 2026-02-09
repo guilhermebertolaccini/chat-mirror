@@ -145,7 +145,7 @@ export default function Conversations() {
         
         <div class="messages">
           ${messages.map(msg => `
-            <div class="message ${msg.direction === 'sent' ? 'sent' : 'received'}">
+            <div class="message ${msg.direction === 'SENT' ? 'sent' : 'received'}">
               <div class="content">${msg.content}</div>
               <div class="time">${format(new Date(msg.timestamp), "dd/MM/yyyy HH:mm", { locale: ptBR })}</div>
             </div>
@@ -306,7 +306,7 @@ export default function Conversations() {
                     messages.map((msg, idx) => {
                       const showDate = idx === 0 ||
                         formatDate(messages[idx - 1].timestamp) !== formatDate(msg.timestamp);
-                      const isSent = msg.direction === 'sent';
+                      const isSent = msg.direction === 'SENT';
 
                       return (
                         <div key={msg.id}>
