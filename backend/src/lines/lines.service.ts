@@ -130,14 +130,11 @@ export class LinesService {
                         // fetchInstances usually returns an array or single object depending on version
                         // v2: array of instances. v1: single?
                         // Let's assume array check
-                        const instances = Array.isArray(infoRes.data) ? infoRes.data : [infoRes.data?.instance || infoRes.data];
+                        const instances = Array.isArray(infoRes.data) ? infoRes.data : [infoRes.data];
                         const myInstance = instances.find((i: any) => i.instance?.instanceName === instanceName || i.instanceName === instanceName) || instances[0];
 
-                        // Extract phone number (owner)
-                        // Structure often: instance.owner (JID)
-                        // or instance.token (not useful)
-                        // Ideally checking "owner" field
-                        const ownerJid = myInstance?.instance?.owner || myInstance?.owner;
+                        // User correction: Look for ownerJid
+                        const ownerJid = myInstance?.ownerJid || myInstance?.instance?.ownerJid || myInstance?.owner;
 
                         if (ownerJid) {
                             const phoneNumber = ownerJid.split('@')[0];
@@ -203,9 +200,11 @@ export class LinesService {
             if (state === 'open' || state === 'connected') {
                 const infoUrl = `${baseUrl}/instance/fetchInstances?instanceName=${instanceName}`;
                 const infoRes = await axios.get(infoUrl, { headers: { apikey: this.evolutionKey } });
-                const instances = Array.isArray(infoRes.data) ? infoRes.data : [infoRes.data?.instance || infoRes.data];
+                const instances = Array.isArray(infoRes.data) ? infoRes.data : [infoRes.data];
                 const myInstance = instances.find((i: any) => i.instance?.instanceName === instanceName || i.instanceName === instanceName) || instances[0];
-                const ownerJid = myInstance?.instance?.owner || myInstance?.owner;
+
+                // User correction: Look for ownerJid
+                const ownerJid = myInstance?.ownerJid || myInstance?.instance?.ownerJid || myInstance?.owner;
 
                 if (ownerJid) {
                     const phoneNumber = ownerJid.split('@')[0];

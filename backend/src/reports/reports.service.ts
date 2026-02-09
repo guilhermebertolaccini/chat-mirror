@@ -5,21 +5,15 @@ import { PrismaService } from '../prisma/prisma.service';
 export class ReportsService {
     constructor(private prisma: PrismaService) { }
 
-    async getMessagesByLine() {
-        // Aggregate messages grouped by line
-        // Since Prisma doesn't support deep relation grouping easily in one go with relations,
-        // we might need to query lines and then aggregate messages, or use raw query.
-        // For simplicity and safety (Prisma), let's fetch lines and aggregate.
-        // Or efficiently: fetch counting.
-
-        // Approach: Fetch all lines, and for each, counts of sent/received.
-        // Ideally we want: Line Name | Sent | Received | Total
+    async getMessagesByLine(startDate?: string, endDate?: string) {
+        const dateFilter = this.getDateFilter(startDate, endDate);
 
         const lines = await this.prisma.line.findMany({
             include: {
                 conversations: {
                     select: {
                         messages: {
+                            where: { timestamp: dateFilter },
                             select: {
                                 direction: true
                             }
@@ -51,8 +45,9 @@ export class ReportsService {
         });
     }
 
-    async getMessagesByOperator() {
-        // Group by Operator
+    async getMessagesByOperator(startDate?: string, endDate?: string) {
+        const dateFilter = this.getDateFilter(startDate, endDate);
+
         const operators = await this.prisma.user.findMany({
             where: { role: 'operador' },
             include: {
@@ -61,6 +56,7 @@ export class ReportsService {
                         conversations: {
                             select: {
                                 messages: {
+                                    where: { timestamp: dateFilter },
                                     select: {
                                         direction: true
                                     }
@@ -97,6 +93,9 @@ export class ReportsService {
     }
 
     async getLinesStatus() {
+        // Status is real-time, no date filter needed usually, but user asked for "Filtro por data... relatórios"
+        // For "Status", date filter applies to "Created At"? Or maybe just connectivity log?
+        // Let's keep status as current state for now as requested by logic.
         const lines = await this.prisma.line.findMany({
             include: {
                 operator: {
@@ -114,5 +113,53 @@ export class ReportsService {
             operatorName: line.operator?.name || 'Sem operador',
             createdAt: line.createdAt
         }));
+    }
+
+    async getDetailedMessages(startDate?: string, endDate?: string) {
+        const dateFilter = this.getDateFilter(startDate, endDate);
+
+        const messages = await this.prisma.message.findMany({
+            where: { timestamp: dateFilter },
+            orderBy: { timestamp: 'desc' },
+            include: {
+                conversation: {
+                    include: {
+                        line: {
+                            include: {
+                                operator: true
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        return messages.map(msg => ({
+            id: msg.id,
+            operatorName: msg.conversation.line.operator?.name || 'N/A',
+            operatorNumber: msg.conversation.line.phoneNumber || 'N/A', // Number of the line
+            recipientNumber: msg.conversation.remoteJid.split('@')[0],
+            direction: msg.direction,
+            content: msg.content,
+            timestamp: msg.timestamp,
+            status: msg.status
+        }));
+    }
+
+    private getDateFilter(startDate?: string, endDate?: string) {
+        if (!startDate && !endDate) return undefined;
+
+        const start = startDate ? new Date(startDate) : new Date(0); // Epoch if no start
+        const end = endDate ? new Date(endDate) : new Date();
+
+        // Ensure end includes the full day if time is 00:00:00
+        if (endDate && end.getHours() === 0) {
+            end.setHours(23, 59, 59, 999);
+        }
+
+        return {
+            gte: start,
+            lte: end
+        };
     }
 }

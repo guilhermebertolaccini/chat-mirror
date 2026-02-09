@@ -64,9 +64,10 @@ export const authApi = {
 };
 
 export const reportsApi = {
-    getMessagesByLine: () => api.get('/reports/messages-by-line').then(res => res.data),
-    getMessagesByOperator: () => api.get('/reports/messages-by-operator').then(res => res.data),
+    getMessagesByLine: (params?: { startDate?: string; endDate?: string }) => api.get('/reports/messages-by-line', { params }).then(res => res.data),
+    getMessagesByOperator: (params?: { startDate?: string; endDate?: string }) => api.get('/reports/messages-by-operator', { params }).then(res => res.data),
     getLinesStatus: () => api.get('/reports/lines-status').then(res => res.data),
+    getDetailedMessages: (params?: { startDate?: string; endDate?: string }) => api.get('/reports/detailed', { params }).then(res => res.data),
 };
 
 export default api;

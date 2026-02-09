@@ -11,22 +11,28 @@ import { format } from 'date-fns';
 
 export default function Reports() {
     const navigate = useNavigate();
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
+    const [detailedMessages, setDetailedMessages] = useState<any[]>([]);
     const [messagesByLine, setMessagesByLine] = useState<any[]>([]);
     const [messagesByOperator, setMessagesByOperator] = useState<any[]>([]);
     const [linesStatus, setLinesStatus] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
     const fetchData = async () => {
-        setLoading(true); // set loading true on manual refresh too
+        setLoading(true);
+        const params = { startDate, endDate };
         try {
-            const [byLine, byOp, status] = await Promise.all([
-                reportsApi.getMessagesByLine(),
-                reportsApi.getMessagesByOperator(),
+            const [byLine, byOp, status, detailed] = await Promise.all([
+                reportsApi.getMessagesByLine(params),
+                reportsApi.getMessagesByOperator(params),
                 reportsApi.getLinesStatus(),
+                reportsApi.getDetailedMessages(params),
             ]);
             setMessagesByLine(byLine);
             setMessagesByOperator(byOp);
             setLinesStatus(status);
+            setDetailedMessages(detailed);
         } catch (error) {
             console.error('Failed to fetch reports:', error);
         } finally {
@@ -36,7 +42,7 @@ export default function Reports() {
 
     useEffect(() => {
         fetchData();
-    }, []);
+    }, [startDate, endDate]); // Refetch when dates change
 
     const handleSync = async () => {
         try {
@@ -60,7 +66,6 @@ export default function Reports() {
         const csvContent = [
             headers.join(','),
             ...data.map(row => headers.map(header => {
-                // Handle dates or specific formatting if needed, and escape commas
                 const value = row[header];
                 return `"${String(value).replace(/"/g, '""')}"`;
             }).join(','))
@@ -82,7 +87,7 @@ export default function Reports() {
             <div className="max-w-7xl mx-auto space-y-6">
 
                 {/* Header */}
-                <div className="flex items-center justify-between">
+                <div className="flex flax-col md:flex-row items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
                         <Button variant="ghost" size="icon" onClick={() => navigate('/')}>
                             <ChevronLeft className="h-5 w-5" />
@@ -92,10 +97,31 @@ export default function Reports() {
                             <p className="text-muted-foreground">Estatísticas detalhadas e exportação</p>
                         </div>
                     </div>
-                    <Button variant="outline" onClick={handleSync} disabled={loading}>
-                        <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                        Sincronizar Dados
-                    </Button>
+
+                    <div className="flex items-center gap-2">
+                        <div className="flex flex-col">
+                            <label className="text-xs text-muted-foreground">Início</label>
+                            <input
+                                type="date"
+                                className="border rounded p-1 text-sm bg-background text-foreground"
+                                value={startDate}
+                                onChange={(e) => setStartDate(e.target.value)}
+                            />
+                        </div>
+                        <div className="flex flex-col">
+                            <label className="text-xs text-muted-foreground">Fim</label>
+                            <input
+                                type="date"
+                                className="border rounded p-1 text-sm bg-background text-foreground"
+                                value={endDate}
+                                onChange={(e) => setEndDate(e.target.value)}
+                            />
+                        </div>
+                        <Button variant="outline" onClick={handleSync} disabled={loading} className="mt-4">
+                            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                            Sincronizar Dados
+                        </Button>
+                    </div>
                 </div>
 
                 {/* Content */}
@@ -104,6 +130,7 @@ export default function Reports() {
                         <TabsTrigger value="lines">Mensagens por Linha</TabsTrigger>
                         <TabsTrigger value="operators">Mensagens por Operador</TabsTrigger>
                         <TabsTrigger value="status">Status das Linhas</TabsTrigger>
+                        <TabsTrigger value="detailed">Relatório Detalhado</TabsTrigger>
                     </TabsList>
 
                     {/* Messages By Line Tab */}
@@ -233,6 +260,62 @@ export default function Reports() {
                                                     <TableCell>{format(new Date(item.createdAt), 'dd/MM/yyyy HH:mm')}</TableCell>
                                                 </TableRow>
                                             ))}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
+
+                    {/* Detailed Report Tab */}
+                    <TabsContent value="detailed">
+                        <Card>
+                            <CardHeader className="flex flex-row items-center justify-between">
+                                <div>
+                                    <CardTitle>Relatório Detalhado</CardTitle>
+                                    <CardDescription>Log completo de mensagens (limite 100 visualização, exporte para completo).</CardDescription>
+                                </div>
+                                <Button variant="outline" onClick={() => downloadCSV(detailedMessages, 'relatorio_detalhado')}>
+                                    <Download className="mr-2 h-4 w-4" /> Exportar CSV
+                                </Button>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="rounded-md border overflow-x-auto">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead>Data/Hora</TableHead>
+                                                <TableHead>Operador</TableHead>
+                                                <TableHead>Linha</TableHead>
+                                                <TableHead>Destinatário</TableHead>
+                                                <TableHead>Dir.</TableHead>
+                                                <TableHead className="w-[300px]">Conteúdo</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {loading ? (
+                                                <TableRow><TableCell colSpan={6} className="text-center h-24">Carregando...</TableCell></TableRow>
+                                            ) : detailedMessages.slice(0, 50).map((msg: any) => (
+                                                <TableRow key={msg.id}>
+                                                    <TableCell className="whitespace-nowrap text-xs">{format(new Date(msg.timestamp), 'dd/MM/yy HH:mm')}</TableCell>
+                                                    <TableCell>{msg.operatorName}</TableCell>
+                                                    <TableCell>{msg.operatorNumber}</TableCell>
+                                                    <TableCell>{msg.recipientNumber}</TableCell>
+                                                    <TableCell>
+                                                        <span className={`text-xs px-1 rounded ${msg.direction === 'SENT' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}`}>
+                                                            {msg.direction === 'SENT' ? 'ENV' : 'REC'}
+                                                        </span>
+                                                    </TableCell>
+                                                    <TableCell className="truncate max-w-[300px]" title={msg.content}>{msg.content}</TableCell>
+                                                </TableRow>
+                                            ))}
+                                            {!loading && detailedMessages.length > 50 && (
+                                                <TableRow>
+                                                    <TableCell colSpan={6} className="text-center text-muted-foreground p-4">
+                                                        Mostrando 50 de {detailedMessages.length} mensagens. Use o botão Exportar para ver tudo.
+                                                    </TableCell>
+                                                </TableRow>
+                                            )}
                                         </TableBody>
                                     </Table>
                                 </div>
