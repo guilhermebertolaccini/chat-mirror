@@ -289,17 +289,18 @@ export class LinesService {
 
                 // 4. Fetch Messages for this conversation
                 try {
-                    const number = remoteJid.split('@')[0];
-                    const isGroup = remoteJid.includes('@g.us');
-
-                    // Use POST /chat/fetchMessages endpoint
-                    const msgsUrl = `${baseUrl}/chat/fetchMessages/${instanceName}`;
+                    // Use POST /chat/findMessages endpoint (correct Evolution API v2)
+                    const msgsUrl = `${baseUrl}/chat/findMessages/${instanceName}`;
                     const payload = {
-                        number: number,
-                        count: limit
+                        where: {
+                            key: {
+                                remoteJid: remoteJid
+                            }
+                        },
+                        limit: limit
                     };
 
-                    this.logger.log(`Fetching messages for ${remoteJid}...`);
+                    this.logger.log(`Fetching messages for ${remoteJid} from ${msgsUrl}...`);
 
                     const msgsRes = await axios.post(msgsUrl, payload, {
                         headers: { apikey: this.evolutionKey }
