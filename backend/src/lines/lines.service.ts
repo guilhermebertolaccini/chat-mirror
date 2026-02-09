@@ -47,24 +47,28 @@ export class LinesService {
             this.logger.log(`Instance Created/Found: ${instanceName} (ID: ${remoteId})`);
 
             // 2. Configure Webhook
+            // ✅ 4. Configure webhook
             try {
                 await this.configureWebhook(instanceName);
             } catch (webhookError) {
-                this.logger.error(`Webhook Config Error: ${JSON.stringify(webhookError.response?.data || webhookError.message)}`);
-                // Use a default valid webhook URL if configured one fails? Or just log warn.
-                // We shouldn't block line creation if webhook fails, but it's critical for functionality.
-                // Let's warn but proceed, so user can at least see the line.
+                this.logger.warn(`⚠️ Webhook config failed, but instance created: ${webhookError.message}`);
             }
 
-            // 3. Save to Database
+            // 3. Save to DB
             const line = await this.prisma.line.create({
                 data: {
                     instanceName,
                     instanceId: remoteId,
-                    status: 'disconnected',
+                    status: 'DISCONNECTED',
                     operatorId,
-                },
+                }
             });
+
+            this.logger.log(`✅ Line created successfully for operator ${operatorId}: ${instanceName}`);
+
+            // 4. Auto-trigger history sync in background (after successful creation)
+            this.syncHistory(instanceName, { limit: 100, daysBack: 30 })
+                .catch(err => this.logger.error(`Background history sync failed for ${instanceName}: ${err.message}`));
 
             return {
                 line,
@@ -231,8 +235,11 @@ export class LinesService {
         }
     }
 
-    async syncHistory(instanceName: string) {
-        this.logger.log(`Starting history sync for ${instanceName}...`);
+    async syncHistory(instanceName: string, options?: { limit?: number; daysBack?: number }) {
+        const limit = options?.limit || 100; // Default to 100 messages per chat
+        const daysBack = options?.daysBack || 30; // Default to 30 days
+
+        this.logger.log(`Starting history sync for ${instanceName} (limit: ${limit}, daysBack: ${daysBack})...`);
         const baseUrl = this.evolutionUrl.replace(/\/$/, '');
 
         try {
@@ -249,6 +256,9 @@ export class LinesService {
             const chats = chatsRes.data || [];
 
             this.logger.log(`Found ${chats.length} chats for ${instanceName}. Processing...`);
+
+            // Calculate timestamp threshold (messages older than this will be skipped)
+            const timestampThreshold = Math.floor((Date.now() - (daysBack * 24 * 60 * 60 * 1000)) / 1000);
 
             // 3. Process each chat
             for (const chat of chats) {
@@ -283,19 +293,29 @@ export class LinesService {
                             key: { remoteJid }
                         },
                         options: {
-                            limit: 20, // Sync last 20 messages
+                            limit: limit,
                             order: [['messageTimestamp', 'DESC']]
                         }
                     }, { headers: { apikey: this.evolutionKey } });
 
                     const messages = msgsRes.data || [];
+                    let imported = 0;
+                    let skipped = 0;
 
                     // Process messages (reverse to insert in order if needed, but we check dupes anyway)
                     for (const msg of messages) {
                         const msgData = msg.message || {};
                         const key = msg.key || {};
                         const id = key.id;
+                        const msgTimestamp = msg.messageTimestamp || 0;
+
                         if (!id) continue;
+
+                        // Skip messages older than threshold
+                        if (msgTimestamp < timestampThreshold) {
+                            skipped++;
+                            continue;
+                        }
 
                         // Content extraction (reuse logic if possible, simplified here)
                         const content =
@@ -316,10 +336,15 @@ export class LinesService {
                                     type: msg.messageType || 'text',
                                     direction: key.fromMe ? 'SENT' : 'RECEIVED',
                                     status: msg.status || 'DELIVERED',
-                                    timestamp: new Date((msg.messageTimestamp || Date.now() / 1000) * 1000)
+                                    timestamp: new Date((msgTimestamp || Date.now() / 1000) * 1000)
                                 }
                             });
+                            imported++;
                         }
+                    }
+
+                    if (imported > 0 || skipped > 0) {
+                        this.logger.log(`Chat ${remoteJid}: imported ${imported}, skipped ${skipped} old messages`);
                     }
 
                 } catch (msgErr) {

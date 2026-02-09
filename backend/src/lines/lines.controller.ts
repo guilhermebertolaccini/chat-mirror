@@ -49,4 +49,23 @@ export class LinesController {
     async syncAll() {
         return this.linesService.syncAllLines();
     }
+
+    @Post(':id/sync-history')
+    async syncHistory(@Param('id') id: string, @Body() body?: { days?: number; limit?: number }) {
+        const line = await this.prisma.line.findUnique({ where: { id } });
+        if (!line) throw new NotFoundException('Line not found');
+
+        const options = {
+            daysBack: body?.days || 30,
+            limit: body?.limit || 100
+        };
+
+        await this.linesService.syncHistory(line.instanceName, options);
+
+        return {
+            success: true,
+            message: `History sync started for ${line.instanceName}`,
+            options
+        };
+    }
 }

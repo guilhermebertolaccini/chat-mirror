@@ -73,21 +73,32 @@ export default function Conversations() {
     return () => clearInterval(interval);
   }, [lineId]); // Remove location.state dependency to avoid loops, handle carefully
 
-  // Fetch Full Conversation Details (Messages) when selected
+  // Fetch Full Conversation Details (Messages) when selected + Real-time polling
   useEffect(() => {
-    if (selectedConversation?.id) {
-      setIsLoading(true);
-      conversationsApi.findOne(selectedConversation.id)
-        .then(data => {
-          // Backend returns { ...conv, messages: [] }
-          // We need to map messages to frontend types if needed, or just use as is
-          // Prisma Message: { content, type, direction, status, timestamp, ... }
-          // Frontend Message: matches mostly.
-          setMessages(data.messages || []);
-        })
-        .catch(console.error)
-        .finally(() => setIsLoading(false));
-    }
+    if (!selectedConversation?.id) return;
+
+    const fetchMessages = async () => {
+      try {
+        const data = await conversationsApi.findOne(selectedConversation.id);
+        const newMessages = data.messages || [];
+
+        // Update messages
+        setMessages(newMessages);
+        setIsLoading(false);
+      } catch (error) {
+        console.error("Failed to fetch messages", error);
+        setIsLoading(false);
+      }
+    };
+
+    // Initial fetch
+    setIsLoading(true);
+    fetchMessages();
+
+    // Poll every 2.5 seconds for real-time updates
+    const interval = setInterval(fetchMessages, 2500);
+
+    return () => clearInterval(interval);
   }, [selectedConversation?.id]);
 
   const filteredConversations = conversations.filter(conv => {

@@ -50,6 +50,10 @@ export const linesApi = {
     syncAll: async () => {
         const response = await api.post('/lines/sync-all');
         return response.data;
+    },
+    syncHistory: async (lineId: string, options?: { days?: number; limit?: number }) => {
+        const response = await api.post(`/lines/${lineId}/sync-history`, options);
+        return response.data;
     }
 };
 
