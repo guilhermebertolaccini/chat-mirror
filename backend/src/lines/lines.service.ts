@@ -236,8 +236,8 @@ export class LinesService {
     }
 
     async syncHistory(instanceName: string, options?: { limit?: number; daysBack?: number }) {
-        const limit = options?.limit || 100;
-        const daysBack = options?.daysBack || 30;
+        const limit = options?.limit || 500; // Increase default limit to 500
+        const daysBack = options?.daysBack || 730; // Increase default history to 2 years
 
         this.logger.log(`Starting history sync for ${instanceName} (limit: ${limit}, daysBack: ${daysBack})...`);
         const baseUrl = this.evolutionUrl.replace(/\/$/, '');
@@ -336,6 +336,7 @@ export class LinesService {
 
                     let imported = 0;
                     let skipped = 0;
+                    let existingCount = 0;
 
                     // Process messages
                     for (const msg of messages) {
@@ -347,7 +348,7 @@ export class LinesService {
                         const msgData = msg.message || {};
                         const key = msg.key || {};
                         const id = key.id;
-                        const msgTimestamp = msg.messageTimestamp || 0; // consistent variable name
+                        const msgTimestamp = typeof msg.messageTimestamp === 'number' ? msg.messageTimestamp : (parseInt(msg.messageTimestamp) || 0);
 
                         if (!id) {
                             this.logger.warn(`Skipping message without ID: ${JSON.stringify(msg).slice(0, 200)}`);
@@ -355,7 +356,7 @@ export class LinesService {
                         }
 
                         // Skip messages older than threshold
-                        if (msgTimestamp < timestampThreshold) {
+                        if (msgTimestamp < timestampThreshold && msgTimestamp > 0) {
                             skipped++;
                             continue;
                         }
@@ -388,11 +389,13 @@ export class LinesService {
                                 }
                             });
                             imported++;
+                        } else {
+                            existingCount++;
                         }
                     }
 
-                    if (imported > 0 || skipped > 0) {
-                        this.logger.log(`Chat ${remoteJid}: imported ${imported}, skipped ${skipped} old messages (Threshold: ${new Date(timestampThreshold * 1000).toISOString()})`);
+                    if (imported > 0 || skipped > 0 || existingCount > 0) {
+                        this.logger.log(`Chat ${remoteJid}: imported ${imported}, existed ${existingCount}, skipped ${skipped} old messages`);
                     } else {
                         // Log why 0 imported
                         this.logger.log(`Chat ${remoteJid}: 0 imported, 0 skipped. Total messages found: ${messages.length}. Check timestamp threshold?`);
