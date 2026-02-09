@@ -251,7 +251,7 @@ export class LinesService {
             }
 
             // 2. Fetch Chats
-            const chatsUrl = `${baseUrl}/chat/findChats/${instanceName}`;
+            const chatsUrl = `${baseUrl}/chat/fetchAllContacts/${instanceName}`;
             this.logger.log(`Fetching chats from: ${chatsUrl}`);
 
             const chatsRes = await axios.get(chatsUrl, { headers: { apikey: this.evolutionKey } });
