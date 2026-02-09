@@ -287,22 +287,22 @@ export class LinesService {
 
                 // 4. Fetch Messages for this Chat
                 try {
-                    const msgsUrl = `${baseUrl}/chat/findMessages/${instanceName}`;
+                    // Extract phone number from remoteJid (remove @s.whatsapp.net or @g.us suffix)
+                    const number = remoteJid.split('@')[0];
+
+                    // Use correct Evolution API endpoint: POST /chat/fetchMessages/{instance}
+                    const msgsUrl = `${baseUrl}/chat/fetchMessages/${instanceName}`;
                     const msgsRes = await axios.post(msgsUrl, {
-                        where: {
-                            key: { remoteJid }
-                        },
-                        options: {
-                            limit: limit,
-                            order: [['messageTimestamp', 'DESC']]
-                        }
+                        number: number,
+                        count: limit,
+                        fromMe: false // Get both sent and received
                     }, { headers: { apikey: this.evolutionKey } });
 
                     const messages = msgsRes.data || [];
                     let imported = 0;
                     let skipped = 0;
 
-                    // Process messages (reverse to insert in order if needed, but we check dupes anyway)
+                    // Process messages
                     for (const msg of messages) {
                         const msgData = msg.message || {};
                         const key = msg.key || {};
@@ -347,8 +347,12 @@ export class LinesService {
                         this.logger.log(`Chat ${remoteJid}: imported ${imported}, skipped ${skipped} old messages`);
                     }
 
+                    // ⚠️ Rate limiting: Wait 2 seconds between each chat to avoid WhatsApp ban
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+
                 } catch (msgErr) {
                     this.logger.warn(`Failed to fetch messages for ${remoteJid}: ${msgErr.message}`);
+                    // Continue with next chat even if this one fails
                 }
             }
 
