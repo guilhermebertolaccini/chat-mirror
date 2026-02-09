@@ -374,206 +374,93 @@ export class LinesService {
             this.logger.error(`History sync error for ${instanceName}: ${errorDetails}`);
         }
     }
-    const baseUrl = this.evolutionUrl.replace(/\/$/, '');
 
-            try {
-    // 1. Get Line from DB
-    const line = await this.prisma.line.findUnique({
-        where: { instanceName },
-        include: { conversations: true } // Get existing conversations
-    });
-
-    if (!line) {
-        this.logger.warn(`Cannot sync history: Line ${instanceName} not found in DB`);
-        return;
-    }
-
-    this.logger.log(`Found ${line.conversations.length} existing conversations for ${instanceName}. Fetching messages...`);
-
-    // Calculate timestamp threshold
-    const timestampThreshold = Math.floor((Date.now() - (daysBack * 24 * 60 * 60 * 1000)) / 1000);
-
-    // 2. For each existing conversation, fetch messages
-    for (const conversation of line.conversations) {
-        const remoteJid = conversation.remoteJid;
-        const number = remoteJid.split('@')[0];
-        const isGroup = remoteJid.includes('@g.us');
-
-        try {
-            // Use GET /message/find/{instance} endpoint
-            const msgsUrl = `${baseUrl}/message/find/${instanceName}`;
-            const params: any = {
-                limit: limit
-            };
-
-            if (isGroup) {
-                params.groupJid = remoteJid;
-            } else {
-                params.number = number;
-            }
-
-            this.logger.log(`Fetching messages for ${remoteJid}...`);
-
-            const msgsRes = await axios.get(msgsUrl, {
-                headers: { apikey: this.evolutionKey },
-                params: params
-            });
-
-            const messages = msgsRes.data || [];
-            let imported = 0;
-            let skipped = 0;
-
-            // Process messages
-            for (const msg of messages) {
-                const msgData = msg.message || {};
-                const key = msg.key || {};
-                const id = key.id;
-                const msgTimestamp = msg.messageTimestamp || 0;
-
-                if (!id) continue;
-
-                // Skip messages older than threshold
-                if (msgTimestamp < timestampThreshold) {
-                    skipped++;
-                    continue;
-                }
-
-                // Content extraction
-                const content =
-                    msgData.conversation ||
-                    msgData.extendedTextMessage?.text ||
-                    msgData.imageMessage?.caption ||
-                    (msg.messageType === 'imageMessage' ? '📷 Imagem' :
-                        msg.messageType === 'audioMessage' ? '🎤 Áudio' : 'Media/Outros');
-
-                // Upsert Message (check if already exists)
-                const existing = await this.prisma.message.findUnique({ where: { evolutionId: id } });
-                if (!existing) {
-                    await this.prisma.message.create({
-                        data: {
-                            evolutionId: id,
-                            conversationId: conversation.id,
-                            content: content || '...',
-                            type: msg.messageType || 'text',
-                            direction: key.fromMe ? 'SENT' : 'RECEIVED',
-                            status: msg.status || 'DELIVERED',
-                            timestamp: new Date((msgTimestamp || Date.now() / 1000) * 1000)
-                        }
-                    });
-                    imported++;
-                }
-            }
-
-            if (imported > 0 || skipped > 0) {
-                this.logger.log(`Chat ${remoteJid}: imported ${imported}, skipped ${skipped} old messages`);
-            }
-
-            // Rate limiting: Wait 2 seconds between each chat
-            await new Promise(resolve => setTimeout(resolve, 2000));
-
-        } catch (msgErr) {
-            const errorMsg = msgErr.response
-                ? `${msgErr.message} - Status: ${msgErr.response.status}`
-                : msgErr.message;
-            this.logger.warn(`Failed to fetch messages for ${remoteJid}: ${errorMsg}`);
-            // Continue with next conversation
-        }
-    }
-
-    this.logger.log(`History sync completed for ${instanceName}`);
-
-} catch (error) {
-    const errorDetails = error.response
-        ? `URL: ${error.config?.url} - Status: ${error.response.status} - Data: ${JSON.stringify(error.response.data)}`
-        : error.message;
-    this.logger.error(`History sync error for ${instanceName}: ${errorDetails}`);
-}
-        }
     async syncAllLines() {
-    this.logger.log('Starting global sync for all lines...');
-    const lines = await this.prisma.line.findMany();
-    const results = {
-        total: lines.length,
-        success: 0,
-        failed: 0,
-        details: [] as any[]
-    };
+        this.logger.log('Starting global sync for all lines...');
+        const lines = await this.prisma.line.findMany();
+        const results = {
+            total: lines.length,
+            success: 0,
+            failed: 0,
+            details: [] as any[]
+        };
 
-    for (const line of lines) {
-        try {
-            await this.syncInstance(line.instanceName);
-            results.success++;
-            results.details.push({ instance: line.instanceName, status: 'success' });
-        } catch (error) {
-            results.failed++;
-            results.details.push({ instance: line.instanceName, status: 'error', error: error.message });
+        for (const line of lines) {
+            try {
+                await this.syncInstance(line.instanceName);
+                results.success++;
+                results.details.push({ instance: line.instanceName, status: 'success' });
+            } catch (error) {
+                results.failed++;
+                results.details.push({ instance: line.instanceName, status: 'error', error: error.message });
+            }
         }
+
+        this.logger.log(`Global sync finished. Success: ${results.success}, Failed: ${results.failed}`);
+        return results;
     }
 
-    this.logger.log(`Global sync finished. Success: ${results.success}, Failed: ${results.failed}`);
-    return results;
-}
 
     private async configureWebhook(instanceName: string) {
-    const baseUrl = this.evolutionUrl.replace(/\/$/, '');
-    // For v2, endpoint is often /webhook/instance/:instanceName or /webhook/set/:instanceName
-    // We stick to /webhook/set/:instanceName but with robust payload
-    const url = `${baseUrl}/webhook/set/${instanceName}`;
+        const baseUrl = this.evolutionUrl.replace(/\/$/, '');
+        // For v2, endpoint is often /webhook/instance/:instanceName or /webhook/set/:instanceName
+        // We stick to /webhook/set/:instanceName but with robust payload
+        const url = `${baseUrl}/webhook/set/${instanceName}`;
 
-    // TODO: Replace with actual public URL or tunnel during dev
-    const webhookUrl = process.env.WEBHOOK_URL || 'http://host.docker.internal:3000/webhooks/evolution';
+        // TODO: Replace with actual public URL or tunnel during dev
+        const webhookUrl = process.env.WEBHOOK_URL || 'http://host.docker.internal:3000/webhooks/evolution';
 
-    this.logger.log(`Configuring Webhook for ${instanceName} to ${webhookUrl}`);
+        this.logger.log(`Configuring Webhook for ${instanceName} to ${webhookUrl}`);
 
-    // Wait a bit for instance to be ready?
-    await new Promise(r => setTimeout(r, 1000));
+        // Wait a bit for instance to be ready?
+        await new Promise(r => setTimeout(r, 1000));
 
-    // Error "instance requires property 'webhook'" suggests nested structure
-    const webhookConfig = {
-        url: webhookUrl,
-        webhook_by_events: true,
-        webhookByEvents: true,
-        events: [
-            'MESSAGES_UPSERT',
-            'MESSAGES_UPDATE',
-            'MESSAGES_DELETE',
-            'SEND_MESSAGE',
-            'CONNECTION_UPDATE',
-            'QRCODE_UPDATED'
-        ],
-        enabled: true,
-    };
+        // Error "instance requires property 'webhook'" suggests nested structure
+        const webhookConfig = {
+            url: webhookUrl,
+            webhook_by_events: true,
+            webhookByEvents: true,
+            events: [
+                'MESSAGES_UPSERT',
+                'MESSAGES_UPDATE',
+                'MESSAGES_DELETE',
+                'SEND_MESSAGE',
+                'CONNECTION_UPDATE',
+                'QRCODE_UPDATED'
+            ],
+            enabled: true,
+        };
 
-    const payload = {
-        webhook: webhookConfig
-    };
+        const payload = {
+            webhook: webhookConfig
+        };
 
-    try {
-        await axios.post(url, payload, {
-            headers: {
-                apikey: this.evolutionKey,
-            },
-        });
-        this.logger.log(`Webhook configured for ${instanceName} -> ${webhookUrl}`);
-    } catch (error) {
-        this.logger.warn(`First webhook attempt failed: ${error.message}. Tying flat payload...`);
-        // Fallback: Try flat payload just in case (some versions differ)
         try {
-            await axios.post(url, webhookConfig, { headers: { apikey: this.evolutionKey } });
-            this.logger.log(`Webhook configured (flat payload) for ${instanceName}`);
-            return;
-        } catch (flatError) {
-            // Fallback 2: Try /webhook/instance/ ROUTE
-            if (error.response?.status === 404 || flatError.response?.status === 404) {
-                this.logger.warn(`Webhook endpoint /webhook/set/ not found, trying /webhook/instance/${instanceName}`);
-                const altUrl = `${baseUrl}/webhook/instance/${instanceName}`;
-                await axios.post(altUrl, { webhook: webhookConfig }, {
-                    headers: { apikey: this.evolutionKey }
-                });
-            } else {
-                throw flatError;
+            await axios.post(url, payload, {
+                headers: {
+                    apikey: this.evolutionKey,
+                },
+            });
+            this.logger.log(`Webhook configured for ${instanceName} -> ${webhookUrl}`);
+        } catch (error) {
+            this.logger.warn(`First webhook attempt failed: ${error.message}. Tying flat payload...`);
+            // Fallback: Try flat payload just in case (some versions differ)
+            try {
+                await axios.post(url, webhookConfig, { headers: { apikey: this.evolutionKey } });
+                this.logger.log(`Webhook configured (flat payload) for ${instanceName}`);
+                return;
+            } catch (flatError) {
+                // Fallback 2: Try /webhook/instance/ ROUTE
+                if (error.response?.status === 404 || flatError.response?.status === 404) {
+                    this.logger.warn(`Webhook endpoint /webhook/set/ not found, trying /webhook/instance/${instanceName}`);
+                    const altUrl = `${baseUrl}/webhook/instance/${instanceName}`;
+                    await axios.post(altUrl, { webhook: webhookConfig }, {
+                        headers: { apikey: this.evolutionKey }
+                    });
+                } else {
+                    throw flatError;
+                }
             }
         }
     }
-}
 }
