@@ -110,4 +110,81 @@ export class DashboardController {
             };
         });
     }
+
+    @Get('search')
+    async searchGlobal(@Query('q') query: string) {
+        if (!query || query.length < 3) return [];
+
+        // 1. Search Conversations (Contact Name or Number)
+        const conversations = await this.prisma.conversation.findMany({
+            where: {
+                OR: [
+                    { contactName: { contains: query, mode: 'insensitive' } },
+                    { remoteJid: { contains: query, mode: 'insensitive' } }
+                ]
+            },
+            include: {
+                line: { include: { operator: true } },
+                messages: {
+                    orderBy: { timestamp: 'desc' },
+                    take: 1
+                }
+            },
+            take: 10
+        });
+
+        // 2. Search Messages (Content)
+        const messages = await this.prisma.message.findMany({
+            where: {
+                content: { contains: query, mode: 'insensitive' }
+            },
+            include: {
+                conversation: {
+                    include: {
+                        line: { include: { operator: true } }
+                    }
+                }
+            },
+            orderBy: { timestamp: 'desc' },
+            take: 20
+        });
+
+        // 3. Map to Unified Result Format
+        const results = new Map<string, any>();
+
+        // Add conversations first
+        conversations.forEach(conv => {
+            const lastMsg = conv.messages[0];
+            results.set(conv.id, {
+                type: 'conversation',
+                id: conv.id,
+                contactName: conv.contactName || conv.remoteJid,
+                remoteJid: conv.remoteJid,
+                lineId: conv.lineId,
+                operatorName: conv.line.operator?.name || 'Sem operador',
+                snippet: lastMsg?.content || 'Sem mensagens recent',
+                timestamp: conv.updatedAt, // or lastMsg timestamp
+                matchType: 'contact'
+            });
+        });
+
+        // Add message matches (overwrite if better or just add)
+        messages.forEach(msg => {
+            if (!results.has(msg.conversationId)) {
+                results.set(msg.conversationId, {
+                    type: 'message',
+                    id: msg.conversationId, // We link to conversation
+                    contactName: msg.conversation.contactName || msg.conversation.remoteJid,
+                    remoteJid: msg.conversation.remoteJid,
+                    lineId: msg.conversation.lineId,
+                    operatorName: msg.conversation.line.operator?.name || 'Sem operador',
+                    snippet: msg.content, // Show the matching message
+                    timestamp: msg.timestamp,
+                    matchType: 'content'
+                });
+            }
+        });
+
+        return Array.from(results.values());
+    }
 }

@@ -22,9 +22,12 @@ import type { Conversation, Message } from '@/types';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
+import { useLocation } from 'react-router-dom';
+
 export default function Conversations() {
   const { lineId } = useParams<{ lineId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [conversations, setConversations] = useState<any[]>([]); // Using any to handle mapping diffs
   const [selectedConversation, setSelectedConversation] = useState<any | null>(null);
@@ -50,6 +53,16 @@ export default function Conversations() {
       try {
         const data = await conversationsApi.findAll(lineId);
         setConversations(data);
+
+        // Auto-select conversation from router state if available
+        if (location.state?.conversationId && data.length > 0) {
+          const target = data.find((c: any) => c.id === location.state.conversationId);
+          if (target) {
+            setSelectedConversation(target);
+            // Clear state to prevent re-selection on reload if desired, or keep it.
+            // navigate(location.pathname, { replace: true, state: {} });
+          }
+        }
       } catch (error) {
         console.error("Failed to fetch conversations", error);
       }
@@ -58,7 +71,7 @@ export default function Conversations() {
     fetchConversations();
     const interval = setInterval(fetchConversations, 5000);
     return () => clearInterval(interval);
-  }, [lineId]);
+  }, [lineId]); // Remove location.state dependency to avoid loops, handle carefully
 
   // Fetch Full Conversation Details (Messages) when selected
   useEffect(() => {
@@ -132,7 +145,7 @@ export default function Conversations() {
         
         <div class="messages">
           ${messages.map(msg => `
-            <div class="message ${msg.direction === 'SENT' ? 'sent' : 'received'}">
+            <div class="message ${msg.direction === 'sent' ? 'sent' : 'received'}">
               <div class="content">${msg.content}</div>
               <div class="time">${format(new Date(msg.timestamp), "dd/MM/yyyy HH:mm", { locale: ptBR })}</div>
             </div>
@@ -224,8 +237,8 @@ export default function Conversations() {
                       key={conv.id}
                       onClick={() => setSelectedConversation(conv)}
                       className={`w-full flex items-start gap-3 p-3 rounded-lg transition-colors text-left ${selectedConversation?.id === conv.id
-                          ? 'bg-accent'
-                          : 'hover:bg-accent/50'
+                        ? 'bg-accent'
+                        : 'hover:bg-accent/50'
                         }`}
                     >
                       <Avatar className="mt-0.5">
@@ -293,7 +306,7 @@ export default function Conversations() {
                     messages.map((msg, idx) => {
                       const showDate = idx === 0 ||
                         formatDate(messages[idx - 1].timestamp) !== formatDate(msg.timestamp);
-                      const isSent = msg.direction === 'SENT';
+                      const isSent = msg.direction === 'sent';
 
                       return (
                         <div key={msg.id}>
@@ -307,8 +320,8 @@ export default function Conversations() {
                           <div className={`flex ${isSent ? 'justify-end' : 'justify-start'}`}>
                             <div
                               className={`max-w-[70%] rounded-lg px-4 py-2 ${isSent
-                                  ? 'bg-emerald-100 dark:bg-emerald-950/50 rounded-br-none'
-                                  : 'bg-secondary rounded-bl-none'
+                                ? 'bg-emerald-100 dark:bg-emerald-950/50 rounded-br-none'
+                                : 'bg-secondary rounded-bl-none'
                                 }`}
                             >
                               <p className="text-sm">{msg.content}</p>

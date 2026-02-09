@@ -47,12 +47,21 @@ export default function DigitalDashboard() {
 
   // Operators with enriched status and currentLine info from API
   const [operators, setOperators] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // Fetch Data
   useEffect(() => {
     const fetchData = async () => {
       try {
+        // If searching (>= 3 chars), perform global search
+        if (searchTerm.length >= 3) {
+          const results = await dashboardApi.search(searchTerm);
+          setSearchResults(results);
+        } else {
+          setSearchResults([]);
+        }
+
         const [metricsData, operatorsData] = await Promise.all([
           dashboardApi.getMetrics({ search: searchTerm, date }),
           dashboardApi.getOperators(),
@@ -103,6 +112,12 @@ export default function DigitalDashboard() {
 
     return matchesSearch;
   });
+
+  const handleSearchResultClick = (result: any) => {
+    navigate(`/conversations/${result.lineId}`, {
+      state: { conversationId: result.id }
+    });
+  };
 
   const handleOperatorClick = (operator: any) => {
     // 1. Try pre-calculated currentLine (online)
@@ -222,9 +237,13 @@ export default function DigitalDashboard() {
             <CardHeader>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <CardTitle>Operadores</CardTitle>
+                  <CardTitle>
+                    {searchTerm.length >= 3 ? "Resultados da Pesquisa" : "Operadores"}
+                  </CardTitle>
                   <CardDescription>
-                    Clique em um operador para ver suas conversas
+                    {searchTerm.length >= 3
+                      ? "Clique em um resultado para ir para a conversa"
+                      : "Clique em um operador para ver suas conversas"}
                   </CardDescription>
                 </div>
               </div>
@@ -290,6 +309,48 @@ export default function DigitalDashboard() {
               <div className="space-y-2">
                 {isLoading ? (
                   <div className="text-center py-8 text-muted-foreground">Carregando dados...</div>
+                ) : searchTerm.length >= 3 ? (
+                  searchResults.length > 0 ? (
+                    searchResults.map((result: any) => (
+                      <button
+                        key={result.id}
+                        onClick={() => handleSearchResultClick(result)}
+                        className="w-full flex items-center justify-between p-4 rounded-lg hover:bg-accent/50 transition-colors text-left"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Avatar>
+                            <AvatarFallback className="bg-primary/10 text-primary">
+                              {getInitials(result.contactName)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium">{result.contactName}</p>
+                              <span className="text-xs text-muted-foreground">
+                                {result.matchType === 'content' ? 'Mensagem encontrada' : 'Contato encontrado'}
+                              </span>
+                            </div>
+                            <p className="text-sm text-muted-foreground line-clamp-1">
+                              {result.snippet}
+                            </p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">
+                                {result.operatorName}
+                              </Badge>
+                              <span className="text-[10px] text-muted-foreground">
+                                {new Date(result.timestamp).toLocaleString()}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                      </button>
+                    ))
+                  ) : (
+                    <p className="text-sm text-muted-foreground text-center py-8">
+                      Nenhum resultado encontrado para "{searchTerm}"
+                    </p>
+                  )
                 ) : filteredOperators.length === 0 ? (
                   <p className="text-sm text-muted-foreground text-center py-8">
                     Nenhum operador encontrado
