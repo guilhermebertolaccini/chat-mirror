@@ -364,7 +364,10 @@ export class LinesService {
                     await new Promise(resolve => setTimeout(resolve, 2000));
 
                 } catch (msgErr) {
-                    this.logger.warn(`Failed to fetch messages for ${remoteJid}: ${msgErr.message}`);
+                    const errorMsg = msgErr.response
+                        ? `${msgErr.message} - URL: ${msgErr.config?.url} - Status: ${msgErr.response.status} - Data: ${JSON.stringify(msgErr.response.data)}`
+                        : msgErr.message;
+                    this.logger.warn(`Failed to fetch messages for ${remoteJid}: ${errorMsg}`);
                     // Continue with next chat even if this one fails
                 }
             }
