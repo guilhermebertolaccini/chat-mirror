@@ -287,16 +287,29 @@ export class LinesService {
 
                 // 4. Fetch Messages for this Chat
                 try {
-                    // Extract phone number from remoteJid (remove @s.whatsapp.net or @g.us suffix)
+                    // Extract phone number from remoteJid
                     const number = remoteJid.split('@')[0];
 
-                    // Use correct Evolution API endpoint: POST /chat/fetchMessages/{instance}
-                    const msgsUrl = `${baseUrl}/chat/fetchMessages/${instanceName}`;
-                    const msgsRes = await axios.post(msgsUrl, {
-                        number: number,
-                        count: limit,
-                        fromMe: false // Get both sent and received
-                    }, { headers: { apikey: this.evolutionKey } });
+                    // Check if it's a group (ends with @g.us) or individual (@s.whatsapp.net)
+                    const isGroup = remoteJid.includes('@g.us');
+
+                    // Use correct Evolution API v2 endpoint: GET /message/find/{instance}
+                    const msgsUrl = `${baseUrl}/message/find/${instanceName}`;
+                    const params: any = {
+                        limit: limit
+                    };
+
+                    // Add either groupJid or number based on chat type
+                    if (isGroup) {
+                        params.groupJid = remoteJid;
+                    } else {
+                        params.number = number;
+                    }
+
+                    const msgsRes = await axios.get(msgsUrl, {
+                        headers: { apikey: this.evolutionKey },
+                        params: params
+                    });
 
                     const messages = msgsRes.data || [];
                     let imported = 0;
