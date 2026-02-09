@@ -262,10 +262,22 @@ export class LinesService {
             // Calculate timestamp threshold
             const timestampThreshold = Math.floor((Date.now() - (daysBack * 24 * 60 * 60 * 1000)) / 1000);
 
+            // Log first contact structure to understand the data
+            if (contacts.length > 0) {
+                this.logger.log(`Sample contact structure: ${JSON.stringify(contacts[0]).slice(0, 500)}`);
+            }
+
             // 3. For each contact, create/update conversation and fetch messages
             for (const contact of contacts) {
-                const remoteJid = contact.id;
+                // Try multiple possible JID fields
+                const remoteJid = contact.remoteJid || contact.jid || contact.wuid || contact.id;
                 if (!remoteJid) continue;
+
+                // Skip if it doesn't look like a WhatsApp JID (should contain @)
+                if (!remoteJid.includes('@')) {
+                    this.logger.log(`Skipping non-JID contact: ${remoteJid}`);
+                    continue;
+                }
 
                 // Upsert Conversation
                 const conversation = await this.prisma.conversation.upsert({
@@ -307,21 +319,19 @@ export class LinesService {
                     });
                     const responseData = msgsRes.data;
 
-                    // Log response structure for debugging
-                    this.logger.log(`Response type: ${typeof responseData}, isArray: ${Array.isArray(responseData)}, keys: ${typeof responseData === 'object' ? Object.keys(responseData || {}).join(',') : 'N/A'}`);
-
-                    // Handle different response formats from Evolution API
+                    // Handle Evolution API v2 response: { messages: { total, pages, currentPage, records: [...] } }
                     let messages: any[] = [];
                     if (Array.isArray(responseData)) {
                         messages = responseData;
+                    } else if (responseData?.messages?.records && Array.isArray(responseData.messages.records)) {
+                        messages = responseData.messages.records;
+                        this.logger.log(`Found ${responseData.messages.total} messages (page ${responseData.messages.currentPage}/${responseData.messages.pages})`);
                     } else if (responseData?.messages && Array.isArray(responseData.messages)) {
                         messages = responseData.messages;
                     } else if (responseData?.data && Array.isArray(responseData.data)) {
                         messages = responseData.data;
-                    } else if (typeof responseData === 'object' && responseData !== null) {
-                        // Maybe it's a single message or has a different structure
-                        this.logger.log(`Unexpected response structure: ${JSON.stringify(responseData).slice(0, 500)}`);
-                        messages = [];
+                    } else {
+                        this.logger.log(`Unexpected response: ${JSON.stringify(responseData).slice(0, 300)}`);
                     }
 
                     let imported = 0;
