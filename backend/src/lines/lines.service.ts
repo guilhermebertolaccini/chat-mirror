@@ -305,8 +305,25 @@ export class LinesService {
                     const msgsRes = await axios.post(msgsUrl, payload, {
                         headers: { apikey: this.evolutionKey }
                     });
+                    const responseData = msgsRes.data;
 
-                    const messages = msgsRes.data || [];
+                    // Log response structure for debugging
+                    this.logger.log(`Response type: ${typeof responseData}, isArray: ${Array.isArray(responseData)}, keys: ${typeof responseData === 'object' ? Object.keys(responseData || {}).join(',') : 'N/A'}`);
+
+                    // Handle different response formats from Evolution API
+                    let messages: any[] = [];
+                    if (Array.isArray(responseData)) {
+                        messages = responseData;
+                    } else if (responseData?.messages && Array.isArray(responseData.messages)) {
+                        messages = responseData.messages;
+                    } else if (responseData?.data && Array.isArray(responseData.data)) {
+                        messages = responseData.data;
+                    } else if (typeof responseData === 'object' && responseData !== null) {
+                        // Maybe it's a single message or has a different structure
+                        this.logger.log(`Unexpected response structure: ${JSON.stringify(responseData).slice(0, 500)}`);
+                        messages = [];
+                    }
+
                     let imported = 0;
                     let skipped = 0;
 
