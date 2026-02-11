@@ -112,15 +112,42 @@ export class DashboardController {
     }
 
     @Get('search')
-    async searchGlobal(@Query('q') query: string) {
+    async searchGlobal(
+        @Query('q') query: string,
+        @Query('startDate') startDate?: string,
+        @Query('endDate') endDate?: string,
+        @Query('operatorId') operatorId?: string
+    ) {
         if (!query || query.length < 3) return [];
+
+        const start = startDate ? new Date(startDate) : undefined;
+        const end = endDate ? new Date(endDate) : undefined;
+
+        // Adjust end date to end of day if provided
+        if (end) end.setHours(23, 59, 59, 999);
+
+        // Common filter for operator
+        const operatorFilter = operatorId && operatorId !== 'all' ? {
+            line: { operatorId }
+        } : {};
 
         // 1. Search Conversations (Contact Name or Number)
         const conversations = await this.prisma.conversation.findMany({
             where: {
-                OR: [
-                    { contactName: { contains: query, mode: 'insensitive' } },
-                    { remoteJid: { contains: query, mode: 'insensitive' } }
+                AND: [
+                    {
+                        OR: [
+                            { contactName: { contains: query, mode: 'insensitive' } },
+                            { remoteJid: { contains: query, mode: 'insensitive' } }
+                        ]
+                    },
+                    operatorId && operatorId !== 'all' ? { line: { operatorId } } : {},
+                    start || end ? {
+                        updatedAt: {
+                            gte: start,
+                            lte: end
+                        }
+                    } : {}
                 ]
             },
             include: {
@@ -130,13 +157,24 @@ export class DashboardController {
                     take: 1
                 }
             },
-            take: 10
+            take: 20
         });
 
         // 2. Search Messages (Content)
         const messages = await this.prisma.message.findMany({
             where: {
-                content: { contains: query, mode: 'insensitive' }
+                AND: [
+                    { content: { contains: query, mode: 'insensitive' } },
+                    start || end ? {
+                        timestamp: {
+                            gte: start,
+                            lte: end
+                        }
+                    } : {},
+                    operatorId && operatorId !== 'all' ? {
+                        conversation: { line: { operatorId } }
+                    } : {}
+                ]
             },
             include: {
                 conversation: {
@@ -146,7 +184,7 @@ export class DashboardController {
                 }
             },
             orderBy: { timestamp: 'desc' },
-            take: 20
+            take: 50
         });
 
         // 3. Map to Unified Result Format

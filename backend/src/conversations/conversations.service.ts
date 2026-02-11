@@ -20,15 +20,46 @@ export class ConversationsService {
     });
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, limit?: number, before?: string, after?: string) {
+    const take = limit ? Number(limit) : 50; // Default 50 messages
+
+    let messages;
+
+    if (after) {
+      // Fetch specificmessages AFTER a cursor (Polling for new messages)
+      // Order ASC to get them in chronological order
+      messages = await this.prisma.message.findMany({
+        where: { conversationId: id },
+        take: take,
+        skip: 1,
+        cursor: { id: after },
+        orderBy: { timestamp: 'asc' },
+      });
+      // No need to reverse, they are already ASC
+    } else {
+      // Fetch latest messages OR messages BEFORE a cursor (History)
+      // Order DESC to get latest first (or closest to 'before' cursor)
+      const cursor = before ? { id: before } : undefined;
+
+      messages = await this.prisma.message.findMany({
+        where: { conversationId: id },
+        take: take,
+        skip: cursor ? 1 : 0,
+        cursor: cursor,
+        orderBy: { timestamp: 'desc' },
+      });
+
+      // Reverse to return ASC (top to bottom)
+      messages.reverse();
+    }
+
     const conversation = await this.prisma.conversation.findUnique({
       where: { id },
-      include: {
-        messages: {
-          orderBy: { timestamp: 'asc' }, // Chat history order
-        },
-      },
     });
-    return conversation;
+
+    return {
+      ...conversation,
+      messages: messages
+    };
   }
 }

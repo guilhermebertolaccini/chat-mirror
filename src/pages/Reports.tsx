@@ -63,16 +63,20 @@ export default function Reports() {
         const headers = Object.keys(data[0]);
 
         // Create CSV content
+        // Use semicolon (;) for Excel compatibility in Brazil/Europe
+        // Add BOM (\uFEFF) for UTF-8 support
         const csvContent = [
-            headers.join(','),
+            headers.join(';'),
             ...data.map(row => headers.map(header => {
                 const value = row[header];
-                return `"${String(value).replace(/"/g, '""')}"`;
-            }).join(','))
-        ].join('\n');
+                // Handle null/undefined and escape quotes
+                const stringValue = value === null || value === undefined ? '' : String(value);
+                return `"${stringValue.replace(/"/g, '""')}"`;
+            }).join(';'))
+        ].join('\r\n'); // Use CRLF for better Windows compatibility
 
-        // Trigger download
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        // Trigger download with BOM
+        const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;

@@ -33,7 +33,7 @@ export const dashboardApi = {
 
 export const conversationsApi = {
     findAll: (lineId?: string) => api.get('/conversations', { params: { lineId } }).then(res => res.data),
-    findOne: (id: string) => api.get(`/conversations/${id}`).then(res => res.data),
+    findOne: (id: string, limit?: number, before?: string, after?: string) => api.get(`/conversations/${id}`, { params: { limit, before, after } }).then(res => res.data),
 };
 
 export const linesApi = {

@@ -73,33 +73,101 @@ export default function Conversations() {
     return () => clearInterval(interval);
   }, [lineId]); // Remove location.state dependency to avoid loops, handle carefully
 
-  // Fetch Full Conversation Details (Messages) when selected + Real-time polling
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+  // Fetch Full Conversation Details (Initial Load)
   useEffect(() => {
     if (!selectedConversation?.id) return;
 
-    const fetchMessages = async () => {
+    const loadInitialMessages = async () => {
+      setIsLoading(true);
+      setMessages([]);
+      setHasMoreMessages(false);
       try {
-        const data = await conversationsApi.findOne(selectedConversation.id);
+        // Fetch last 50 messages
+        const data = await conversationsApi.findOne(selectedConversation.id, 50);
         const newMessages = data.messages || [];
-
-        // Update messages
         setMessages(newMessages);
-        setIsLoading(false);
+
+        // If we got full limit, likely there are older messages
+        if (newMessages.length >= 50) {
+          setHasMoreMessages(true);
+        }
       } catch (error) {
         console.error("Failed to fetch messages", error);
+      } finally {
         setIsLoading(false);
       }
     };
 
-    // Initial fetch
-    setIsLoading(true);
-    fetchMessages();
-
-    // Poll every 2.5 seconds for real-time updates
-    const interval = setInterval(fetchMessages, 2500);
-
-    return () => clearInterval(interval);
+    loadInitialMessages();
   }, [selectedConversation?.id]);
+
+  // Real-time polling (Incremental Append)
+  useEffect(() => {
+    if (!selectedConversation?.id) return;
+
+    const pollNewMessages = async () => {
+      // Don't poll if no messages loaded yet (wait for initial)
+      // Actually, we can poll, but better wait.
+      const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+
+      try {
+        // If we have messages, fetch newer than last. If empty, fetch latest 50 (should match initial)
+        const data = await conversationsApi.findOne(
+          selectedConversation.id,
+          50, // limit
+          undefined, // before
+          lastMessage?.id // after
+        );
+        const newMessages = data.messages || [];
+
+        if (newMessages.length > 0) {
+          setMessages(prev => {
+            // De-duplicate just in case
+            const existingIds = new Set(prev.map(m => m.id));
+            const uniqueNew = newMessages.filter((m: Message) => !existingIds.has(m.id));
+            if (uniqueNew.length === 0) return prev;
+            return [...prev, ...uniqueNew];
+          });
+        }
+      } catch (error) {
+        console.error("Polling error", error);
+      }
+    };
+
+    const interval = setInterval(pollNewMessages, 3000);
+    return () => clearInterval(interval);
+  }, [selectedConversation?.id, messages]); // Re-create interval when messages change to have correct 'lastMessage'
+
+  const loadOlderMessages = async () => {
+    if (!selectedConversation?.id || isLoadingMore || !messages.length) return;
+
+    setIsLoadingMore(true);
+    const firstMessage = messages[0]; // Oldest
+
+    try {
+      const data = await conversationsApi.findOne(
+        selectedConversation.id,
+        50,
+        firstMessage.id // before
+      );
+      const olderMessages = data.messages || [];
+
+      if (olderMessages.length < 50) {
+        setHasMoreMessages(false);
+      }
+
+      if (olderMessages.length > 0) {
+        setMessages(prev => [...olderMessages, ...prev]);
+      }
+    } catch (error) {
+      console.error("Failed to load older messages", error);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
 
   const filteredConversations = conversations.filter(conv => {
     const contactName = conv.contactName || conv.remoteJid || 'Desconhecido';
@@ -307,6 +375,18 @@ export default function Conversations() {
               {/* Messages */}
               <ScrollArea className="flex-1 p-4">
                 <div className="space-y-4 max-w-3xl mx-auto">
+                  {hasMoreMessages && !isLoading && (
+                    <div className="flex justify-center pt-4">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={loadOlderMessages}
+                        disabled={isLoadingMore}
+                      >
+                        {isLoadingMore ? "Carregando..." : "Carregar mensagens anteriores"}
+                      </Button>
+                    </div>
+                  )}
                   {isLoading ? (
                     <div className="text-center py-4">Carregando mensagens...</div>
                   ) : messages.length === 0 ? (

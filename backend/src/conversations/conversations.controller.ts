@@ -11,7 +11,12 @@ export class ConversationsController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.conversationsService.findOne(id);
+  findOne(
+    @Param('id') id: string,
+    @Query('limit') limit?: number,
+    @Query('before') before?: string,
+    @Query('after') after?: string
+  ) {
+    return this.conversationsService.findOne(id, limit, before, after);
   }
 }

@@ -37,6 +37,10 @@ export default function DigitalDashboard() {
   const [walletFilter, setWalletFilter] = useState<string>('all');
   const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]); // Default today YYYY-MM-DD
 
+  const [searchStartDate, setSearchStartDate] = useState<string>('');
+  const [searchEndDate, setSearchEndDate] = useState<string>('');
+  const [searchOperatorId, setSearchOperatorId] = useState<string>('all');
+
   // Real Data State
   const [metrics, setMetrics] = useState({
     totalOperators: 0,
@@ -56,7 +60,11 @@ export default function DigitalDashboard() {
       try {
         // If searching (>= 3 chars), perform global search
         if (searchTerm.length >= 3) {
-          const results = await dashboardApi.search(searchTerm);
+          const results = await dashboardApi.search(searchTerm, {
+            startDate: searchStartDate,
+            endDate: searchEndDate,
+            operatorId: searchOperatorId
+          });
           setSearchResults(results);
         } else {
           setSearchResults([]);
@@ -87,7 +95,7 @@ export default function DigitalDashboard() {
       clearInterval(interval);
       clearTimeout(timeoutId);
     };
-  }, [searchTerm, date]); // Re-fetch when search or date changes
+  }, [searchTerm, date, searchStartDate, searchEndDate, searchOperatorId]); // Re-fetch when search or filters change
 
   // Get unique wallets
   // operators might be empty initially, so safe check
@@ -138,7 +146,7 @@ export default function DigitalDashboard() {
   };
 
   const getInitials = (name: string) => {
-    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+    return name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '??';
   };
 
   return (
@@ -173,8 +181,9 @@ export default function DigitalDashboard() {
       {/* Main Content */}
       <main className="container py-6 px-4">
         <div className="space-y-6">
-          {/* Metrics Cards */}
+          {/* Metrics Cards - Unchanged... */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* ... (Keep existing cards) ... */}
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
@@ -221,7 +230,7 @@ export default function DigitalDashboard() {
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-muted-foreground">Total Mensagens</p>
+                    <p className="text-sm text-muted-foreground">Total Mensagens (Hoje)</p>
                     <div className="text-2xl font-bold">{metrics.totalMessages}</div>
                   </div>
                   <div className="h-10 w-10 rounded-lg bg-secondary flex items-center justify-center">
@@ -247,61 +256,80 @@ export default function DigitalDashboard() {
                   </CardDescription>
                 </div>
               </div>
-              <div className="flex flex-col sm:flex-row gap-2 mt-4 sm:mt-0">
-                <Select value={walletFilter} onValueChange={setWalletFilter}>
-                  <SelectTrigger className="w-[180px]">
-                    <SelectValue placeholder="Filtrar por carteira" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todas as carteiras</SelectItem>
-                    {wallets.map(wallet => (
-                      <SelectItem key={wallet} value={wallet}>{wallet}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="flex flex-col gap-4 mt-4">
 
-                <div className="flex gap-2">
-                  <Button
-                    variant={statusFilter === 'all' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setStatusFilter('all')}
-                  >
-                    Todos
-                  </Button>
-                  <Button
-                    variant={statusFilter === 'online' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setStatusFilter('online')}
-                  >
-                    Online
-                  </Button>
-                  <Button
-                    variant={statusFilter === 'offline' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setStatusFilter('offline')}
-                  >
-                    Offline
-                  </Button>
-                </div>
-              </div>
+                {/* Filters Row */}
+                <div className="flex flex-col sm:flex-row gap-2">
+                  {/* Only show Operator/Wallet filters if NOT searching (or maybe include them?)
+                        Actually, wallet/status filters apply to OPERATORS list.
+                        New search filters apply to SEARCH.
+                        Let's separate them visually/conceptually.
+                    */}
 
-              <div className="relative mt-4 flex gap-4">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Buscar interações"
-                    className="pl-9"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                  />
+                  {searchTerm.length < 3 && (
+                    <>
+                      <Select value={walletFilter} onValueChange={setWalletFilter}>
+                        <SelectTrigger className="w-[180px]">
+                          <SelectValue placeholder="Filtrar por carteira" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Todas as carteiras</SelectItem>
+                          {wallets.map(wallet => (
+                            <SelectItem key={wallet} value={wallet}>{wallet}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      <div className="flex gap-2">
+                        <Button variant={statusFilter === 'all' ? 'default' : 'outline'} size="sm" onClick={() => setStatusFilter('all')}>Todos</Button>
+                        <Button variant={statusFilter === 'online' ? 'default' : 'outline'} size="sm" onClick={() => setStatusFilter('online')}>Online</Button>
+                        <Button variant={statusFilter === 'offline' ? 'default' : 'outline'} size="sm" onClick={() => setStatusFilter('offline')}>Offline</Button>
+                      </div>
+                    </>
+                  )}
                 </div>
-                <div className="w-[180px]">
+
+                {/* Search & Advanced Filters */}
+                <div className="flex flex-col sm:flex-row gap-4 items-end sm:items-center bg-muted/20 p-2 rounded-lg">
+                  <div className="relative flex-1 w-full">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Buscar por nome, telefone ou conteúdo (min 3 chars)..."
+                      className="pl-9"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                  </div>
+
+                  {/* Search Filters - Always visible or only when searching? Visible makes features discoverable */}
                   <Input
                     type="date"
-                    value={date}
-                    onChange={(e) => setDate(e.target.value)}
-                    className="w-full"
+                    value={searchStartDate}
+                    onChange={(e) => setSearchStartDate(e.target.value)}
+                    className="w-[150px]"
+                    placeholder="De"
+                    title="Data Inicial"
                   />
+                  <Input
+                    type="date"
+                    value={searchEndDate}
+                    onChange={(e) => setSearchEndDate(e.target.value)}
+                    className="w-[150px]"
+                    placeholder="Até"
+                    title="Data Final"
+                  />
+
+                  <Select value={searchOperatorId} onValueChange={setSearchOperatorId}>
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="Operador (Busca)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      {operators.map(op => (
+                        <SelectItem key={op.id} value={op.id}>{op.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             </CardHeader>
